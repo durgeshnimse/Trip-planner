@@ -332,6 +332,7 @@
 </footer>
 
 <script>
+
 let currentUserStatus = {
   isLoggedIn: false,
   tier: "Free"
@@ -339,45 +340,52 @@ let currentUserStatus = {
 
 let map;
 let directionsService;
-let directionsRenderer;
+let renderers = {
+  fastest: null,
+  scenic: null,
+  cheapest: null
+};
+
+// Defined theme-matching colors
+const routeColors = {
+  fastest: "#06b6d4",  // Cyan
+  scenic: "#10b981",   // Emerald
+  cheapest: "#f59e0b"  // Amber
+};
 let fromAutocomplete;
 let toAutocomplete;
 
 function initMap() {
   directionsService = new google.maps.DirectionsService();
-  directionsRenderer = new google.maps.DirectionsRenderer({
-    polylineOptions: { strokeColor: "#06b6d4", strokeWeight: 5 }
-  });
 
-  const defaultIndiaCenter = { lat: 20.5937, lng: 78.9629 };
+  // Map theme styling configuration...
   map = new google.maps.Map(document.getElementById("map"), {
     zoom: 5,
-    center: defaultIndiaCenter,
-    styles: [
-      { "elementType": "geometry", "stylers": [{ "color": "#1d2c4d" }] },
-      { "elementType": "labels.text.fill", "stylers": [{ "color": "#8ec3b9" }] },
-      { "elementType": "labels.text.stroke", "stylers": [{ "color": "#1d2c4d" }] },
-      { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#304a7d" }] },
-      { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#0e1626" }] }
-    ],
-    disableDefaultUI: false
+    center: { lat: 20.5937, lng: 78.9629 },
+    styles: [ /* your custom styles... */ ]
   });
 
-  directionsRenderer.setMap(map);
-  directionsRenderer.setPanel(document.getElementById("directionsPanel"));
+  // Initialize and attach each renderer with its distinct color palette
+  Object.keys(routeColors).forEach(type => {
+    renderers[type] = new google.maps.DirectionsRenderer({
+      map: map,
+      suppressMarkers: false, // Set true if you want custom waypoint icons
+      polylineOptions: {
+        strokeColor: routeColors[type],
+        strokeWeight: type === 'fastest' ? 6 : 4, // Make the primary route slightly thicker
+        strokeOpacity: 0.8
+      }
+    });
+  });
 
+  // Note: Only bind the text panel to the primary fastest route
+  renderers.fastest.setPanel(document.getElementById("directionsPanel"));
+
+  // Setup autocompletes below as usual...
   const fromInput = document.getElementById("from");
   const toInput = document.getElementById("to");
-
-  const autocompleteOptions = {
-    types: ['geocode']
-  };
-
-  fromAutocomplete = new google.maps.places.Autocomplete(fromInput, autocompleteOptions);
-  toAutocomplete = new google.maps.places.Autocomplete(toInput, autocompleteOptions);
-
-  fromAutocomplete.bindTo("bounds", map);
-  toAutocomplete.bindTo("bounds", map);
+  fromAutocomplete = new google.maps.places.Autocomplete(fromInput, { types: ['geocode'] });
+  toAutocomplete = new google.maps.places.Autocomplete(toInput, { types: ['geocode'] });
 }
 
 function checkCustomDays(value) {
@@ -455,14 +463,48 @@ function handleFormSubmit(event) {
   alert(`Registry Handshake Completed!\n\nWelcome back, ${user}! Access clearance granted.`);
 }
 
+// Toggle logic visibility controls for Payment UI Overlay
+function togglePaymentModal() {
+  const payModal = document.getElementById("paymentModal");
+  payModal.classList.toggle("hidden");
+}
+
+// Intercept subscription clicks to process context variables before throwing UI elements
 function selectTier(tierName, price) {
   if (!currentUserStatus.isLoggedIn) {
     alert(`Authentication Registry Intercept: Please tap "Sign In" before registering your account subscription workflow.`);
+    // Automatically trigger auth modal if user is not signed in yet
+    toggleAuthModal();
     return;
   }
-  currentUserStatus.tier = tierName;
+  
+  if (tierName === "Free") {
+    alert("Sandbox Notice: You are already operating inside the baseline free parameters tier.");
+    return;
+  }
+
+  // Bind dynamic titles and values to elements inside the markup engine
+  document.getElementById("paymentModalTitle").innerText = `Upgrade to ${tierName}`;
+  document.getElementById("paymentModalPrice").innerText = `₹${price} / month`;
+  
+  // OPTIONAL: Modify UPI dynamic string payload fields dynamically if needed
+  // document.getElementById("qrCodeImage").src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=upi://pay?pa=YOUR_UPI_ID@okaxis&am=${price}&tn=PlanoTrip_${tierName}`;
+
+  // Launch the premium visual element
+  togglePaymentModal();
+}
+
+// Mock completion handshake verifying data arrays matching states
+function verifyPaymentMock() {
+  togglePaymentModal();
+  
+  // Extract currently processing target parameters directly from screen context
+  const targetTier = document.getElementById("paymentModalTitle").innerText.replace("Upgrade to ", "");
+  
+  currentUserStatus.tier = targetTier;
   updateTierBadge();
-  alert(`Secure Payment Hook: Mock Invoice Generated for ₹${price}. Account tier upgraded successfully to [${tierName}].`);
+  
+  alert(`Payment Registry Synchronization Succesful!\n\nYour account has been fully configured to: [${targetTier}].\nAll premium radar points and MMT layers are now unlocked.`);
 }
 
 function updateTierBadge() {
@@ -483,123 +525,251 @@ function generateTrip() {
   if (selectDaysValue === "custom") {
     const customInputValue = parseInt(document.getElementById("customDaysInput").value);
     if (!customInputValue || customInputValue < 1) {
-      alert("Validation Exception: Please specify a valid number of days for your custom range.");
+      alert("Validation Exception: Please specify a valid number of days.");
       return;
     }
     totalDays = customInputValue;
   }
 
   if (!from || !to) {
-    alert("Validation Exception: Input vectors cannot be empty. Please clarify your origin city and targeted destination.");
+    alert("Validation Exception: Input vectors cannot be empty.");
     return;
+  }
+
+  // Anti-crash throttle
+  const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+  async function buildDynamicItinerary(route, totalDays, destName) {
+    try {
+      const steps = route.legs[0].steps || [];
+      const totalMeters = route.legs[0].distance.value; 
+      const metersPerDay = totalMeters / totalDays;
+
+      let runningDistance = 0;
+      let dayCounter = 1;
+      let stayoverCoords = []; 
+
+      for (let i = 0; i < steps.length; i++) {
+        runningDistance += steps[i].distance.value || 0;
+        if (runningDistance >= (metersPerDay * dayCounter) && dayCounter < totalDays) {
+          stayoverCoords.push(steps[i].end_location); 
+          dayCounter++;
+        }
+      }
+
+      while (stayoverCoords.length < totalDays - 1) {
+        stayoverCoords.push(steps[Math.floor(steps.length / 2)].end_location);
+      }
+
+      const geocoder = new google.maps.Geocoder();
+      let stayovers = [];
+
+      for (let latLng of stayoverCoords) {
+        await sleep(350); // Prevents Google from blocking us
+
+        try {
+          const response = await geocoder.geocode({ location: latLng });
+          let cityName = "Regional Town";
+
+          if (response.results && response.results.length > 0) {
+            const addressComponents = response.results[0].address_components;
+            const localityObj = addressComponents.find(c => c.types.includes("locality")) 
+                             || addressComponents.find(c => c.types.includes("administrative_area_level_3"))
+                             || addressComponents.find(c => c.types.includes("administrative_area_level_2"));
+            if (localityObj) {
+              cityName = localityObj.long_name;
+            }
+          }
+          stayovers.push(cityName);
+        } catch (error) {
+          console.warn("Geocode limit hit, using fallback.");
+          stayovers.push("Transit Checkpoint");
+        }
+      }
+
+      let html = "";
+      for (let i = 1; i <= totalDays; i++) {
+        let stayText = i === totalDays 
+          ? `<b></b> Arrive and check-in at <b>${destName}</b>.` 
+          : `<b>Night Stay:</b> Conclude driving and arrange lodging near <b>${stayovers[i-1]}</b>.`;
+
+        html += `
+          <div class="border-l-2 border-dashed border-cyan-500/30 pl-4 relative my-3 text-xs">
+            <div class="absolute w-2 h-2 rounded-full bg-cyan-400 -left-[5px] top-1.5 shadow-sm"></div>
+            <span class="font-black text-cyan-400 uppercase tracking-wider block">Day ${i}</span>
+            <p class="text-gray-300 mt-1 text-[11px] bg-white/5 p-2 rounded border border-white/5 inline-block w-full">${stayText}</p>
+          </div>`;
+      }
+      return html;
+
+    } catch (criticalError) {
+      console.error("Total failure in Itinerary Builder:", criticalError);
+      return `<p class="text-red-400 text-xs">Could not generate itinerary due to an API error.</p>`;
+    }
   }
 
   directionsService.route({
     origin: from,
     destination: to,
-    travelMode: google.maps.TravelMode[mode === "TWO_WHEELER" ? "TWO_WHEELER" : mode === "TRANSIT" ? "TRANSIT" : "DRIVING"]
-  }, (response, status) => {
-    if (status === google.maps.DirectionsStatus.OK) {
-      
-      document.getElementById("directionsPanel").innerHTML = "";
-      const wrapper = document.getElementById("resultsWrapper");
-      wrapper.classList.remove("hidden");
-      
-      setTimeout(() => {
-        wrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
+    travelMode: google.maps.TravelMode[mode === "TWO_WHEELER" ? "TWO_WHEELER" : mode === "TRANSIT" ? "TRANSIT" : "DRIVING"],
+    provideRouteAlternatives: true 
+  }, async (response, status) => {
+    
+    try {
+      if (status === google.maps.DirectionsStatus.OK) {
+        
+        document.getElementById("directionsPanel").innerHTML = "";
+        const wrapper = document.getElementById("resultsWrapper");
+        wrapper.classList.remove("hidden");
+        
+        setTimeout(() => {
+          wrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
 
-      directionsRenderer.setDirections(response);
+        const routes = response.routes;
+        const destinationLabel = to.split(',')[0];
 
-      const routeLeg = response.routes[0].legs[0];
-      const distanceString = routeLeg.distance.text;
-      const actualDuration = routeLeg.duration.text;
-      const rawDistanceValue = parseInt(distanceString.replace(/,/g, '')) || 500;
+        if (routes[0]) { renderers.fastest.setDirections(response); renderers.fastest.setRouteIndex(0); }
+        if (routes[1]) { renderers.scenic.setDirections(response); renderers.scenic.setRouteIndex(1); } 
+        else { renderers.scenic.setDirections({ routes: [] }); }
+        if (routes[2]) { renderers.cheapest.setDirections(response); renderers.cheapest.setRouteIndex(2); } 
+        else if (routes[1]) { renderers.cheapest.setDirections(response); renderers.cheapest.setRouteIndex(1); } 
+        else { renderers.cheapest.setDirections({ routes: [] }); }
 
-      const baseCostFactor = mode === "DRIVING" ? 8 : mode === "TWO_WHEELER" ? 4 : 3;
-      const fuelCost = Math.floor(rawDistanceValue * baseCostFactor);
-      const toll = mode === "TRANSIT" ? 0 : 480;
+        // --- MATH RE-ADDED HERE ---
+        const baseCostFactor = mode === "DRIVING" ? 8 : mode === "TWO_WHEELER" ? 4 : 3;
+        const toll = mode === "TRANSIT" ? 0 : 480;
 
-      let itineraryHtml = "";
-      for(let i = 1; i <= totalDays; i++) {
-        itineraryHtml += `
-          <div class="border-l-2 border-dashed border-gray-700 pl-4 relative my-3 text-xs">
-            <div class="absolute w-2 h-2 rounded-full bg-cyan-400 -left-[5px] top-1.5"></div>
-            <span class="font-bold text-gray-300">Day ${i}: Explore Points</span>
-            <p class="text-gray-500 mt-0.5">Morning transition step waypoint mapping followed by local dining exploration profiles.</p>
-          </div>`;
+        const resultsContainer = document.getElementById("results");
+        resultsContainer.innerHTML = `<div class="text-center text-cyan-400 p-6 text-sm"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Computing geographical stays via GPS (Takes a few seconds)...</div>`;
+
+        // Await the itineraries safely
+        const itinerary0 = await buildDynamicItinerary(routes[0], totalDays, destinationLabel);
+        const itinerary1 = routes[1] ? await buildDynamicItinerary(routes[1], totalDays, destinationLabel) : "";
+        const itinerary2 = routes[2] ? await buildDynamicItinerary(routes[2], totalDays, destinationLabel) : "";
+
+        // Route 0 Stats
+        const leg0 = routes[0].legs[0];
+        const dist0 = leg0.distance.text;
+        const dur0 = leg0.duration.text;
+        const rawDist0 = parseInt(dist0.replace(/,/g, '')) || 500;
+        const fuel0 = Math.floor(rawDist0 * baseCostFactor);
+
+        let cardsHtml = `
+          <div class="glass p-6 flex flex-col justify-between border-t-4 border-cyan-500">
+            <div>
+              <div class="flex justify-between items-start mb-4">
+                <span class="px-2.5 py-1 text-[10px] font-extrabold uppercase bg-cyan-500/10 text-cyan-400 rounded-md tracking-wider">Fastest Express</span>
+                <i class="fa-solid fa-bolt text-cyan-400"></i>
+              </div>
+              <h3 class="text-xl font-bold text-white mb-2">${from.split(',')[0]} <i class="fa-solid fa-arrow-right text-xs mx-1 text-gray-500"></i> ${destinationLabel}</h3>
+              
+              <div class="space-y-2 text-sm text-gray-400 mt-4">
+                <p class="flex justify-between border-b border-white/5 pb-1"><span>Distance:</span> <span class="text-white font-medium">${dist0}</span></p>
+                <p class="flex justify-between border-b border-white/5 pb-1"><span>Duration:</span> <span class="text-white font-medium">${dur0}</span></p>
+                <p class="flex justify-between border-b border-white/5 pb-1"><span>Est. Fuel/Ticket:</span> <span class="text-white font-medium">₹${fuel0}</span></p>
+                <p class="flex justify-between border-b border-white/5 pb-1"><span>Transit Tolls:</span> <span class="text-white font-medium">₹${toll}</span></p>
+              </div>
+
+              <div class="mt-6 pt-4 border-t border-white/10">
+                <span class="text-xs font-bold uppercase tracking-wider text-gray-400 block mb-2">Calculated Itinerary (${totalDays} Days):</span>
+                <div class="max-h-[300px] overflow-y-auto pr-1">
+                  ${itinerary0}
+                </div>
+              </div>
+            </div>
+            <div class="mt-6 pt-4 border-t border-white/10 flex justify-between items-center">
+              <span class="text-xs text-gray-400">Total Projective Cost</span>
+              <span class="text-xl font-black text-cyan-400">₹${fuel0 + toll}</span>
+            </div>
+          </div>
+        `;
+
+        // Route 1 Stats (Scenic)
+        if (routes[1]) {
+          const leg1 = routes[1].legs[0];
+          const dist1 = leg1.distance.text;
+          const dur1 = leg1.duration.text;
+          const rawDist1 = parseInt(dist1.replace(/,/g, '')) || 500;
+          const fuel1 = Math.floor(rawDist1 * baseCostFactor * 1.1);
+          const toll1 = Math.max(0, toll - 180);
+
+          cardsHtml += `
+            <div class="glass p-6 flex flex-col justify-between border-t-4 border-emerald-500 mt-4">
+              <div>
+                <div class="flex justify-between items-start mb-4">
+                  <span class="px-2.5 py-1 text-[10px] font-extrabold uppercase bg-emerald-500/10 text-emerald-400 rounded-md tracking-wider">Panoramic Vistas</span>
+                  <i class="fa-solid fa-mountain-sun text-emerald-400"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">Highland Byway Path</h3>
+                
+                <div class="space-y-2 text-sm text-gray-400 mt-4">
+                  <p class="flex justify-between border-b border-white/5 pb-1"><span>Distance:</span> <span class="text-white font-medium">${dist1}</span></p>
+                  <p class="flex justify-between border-b border-white/5 pb-1"><span>Duration:</span> <span class="text-white font-medium">${dur1}</span></p>
+                  <p class="flex justify-between border-b border-white/5 pb-1"><span>Est. Fuel/Ticket:</span> <span class="text-white font-medium">₹${fuel1}</span></p>
+                  <p class="flex justify-between border-b border-white/5 pb-1"><span>Transit Tolls:</span> <span class="text-white font-medium">₹${toll1}</span></p>
+                </div>
+
+                <div class="mt-6 pt-4 border-t border-white/10">
+                  <span class="text-xs font-bold uppercase tracking-wider text-gray-400 block mb-2">Calculated Itinerary (${totalDays} Days):</span>
+                  <div class="max-h-[300px] overflow-y-auto pr-1">
+                    ${itinerary1}
+                  </div>
+                </div>
+              </div>
+              <div class="mt-6 pt-4 border-t border-white/10 flex justify-between items-center">
+                <span class="text-xs text-gray-400">Total Projective Cost</span>
+                <span class="text-xl font-black text-emerald-400">₹${fuel1 + toll1}</span>
+              </div>
+            </div>`;
+        }
+
+        // Route 2 Stats (Cheapest)
+        if (routes[2]) {
+          const leg2 = routes[2].legs[0];
+          const dist2 = leg2.distance.text;
+          const dur2 = leg2.duration.text;
+          const rawDist2 = parseInt(dist2.replace(/,/g, '')) || 500;
+          const fuel2 = Math.floor(rawDist2 * baseCostFactor * 0.85);
+
+          cardsHtml += `
+            <div class="glass p-6 flex flex-col justify-between border-t-4 border-amber-500 mt-4">
+              <div>
+                <div class="flex justify-between items-start mb-4">
+                  <span class="px-2.5 py-1 text-[10px] font-extrabold uppercase bg-amber-500/10 text-amber-400 rounded-md tracking-wider">Thrifty Baseline</span>
+                  <i class="fa-solid fa-wallet text-amber-400"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">Economic Bypass System</h3>
+                
+                <div class="space-y-2 text-sm text-gray-400 mt-4">
+                  <p class="flex justify-between border-b border-white/5 pb-1"><span>Distance:</span> <span class="text-white font-medium">${dist2}</span></p>
+                  <p class="flex justify-between border-b border-white/5 pb-1"><span>Duration:</span> <span class="text-white font-medium">${dur2}</span></p>
+                  <p class="flex justify-between border-b border-white/5 pb-1"><span>Est. Fuel/Ticket:</span> <span class="text-white font-medium">₹${fuel2}</span></p>
+                  <p class="flex justify-between border-b border-white/5 pb-1"><span>Transit Tolls:</span> <span class="text-white font-medium">₹0</span></p>
+                </div>
+
+                <div class="mt-6 pt-4 border-t border-white/10">
+                  <span class="text-xs font-bold uppercase tracking-wider text-gray-400 block mb-2">Calculated Itinerary (${totalDays} Days):</span>
+                  <div class="max-h-[300px] overflow-y-auto pr-1">
+                    ${itinerary2}
+                  </div>
+                </div>
+              </div>
+              <div class="mt-6 pt-4 border-t border-white/10 flex justify-between items-center">
+                <span class="text-xs text-gray-400">Total Projective Cost</span>
+                <span class="text-xl font-black text-amber-400">₹${fuel2}</span>
+              </div>
+            </div>`;
+        }
+
+        resultsContainer.innerHTML = cardsHtml;
+
+      } else {
+        alert("Google Route Matrix Exception: Could not determine paths.");
       }
-
-      const resultsContainer = document.getElementById("results");
-      resultsContainer.innerHTML = `
-        <div class="glass p-6 flex flex-col justify-between border-t-4 border-cyan-500">
-          <div>
-            <div class="flex justify-between items-start mb-4">
-              <span class="px-2.5 py-1 text-[10px] font-extrabold uppercase bg-cyan-500/10 text-cyan-400 rounded-md tracking-wider">Fastest Express</span>
-              <i class="fa-solid fa-bolt text-cyan-400"></i>
-            </div>
-            <h3 class="text-xl font-bold text-white mb-2">${from.split(',')[0]} <i class="fa-solid fa-arrow-right text-xs mx-1 text-gray-500"></i> ${to.split(',')[0]}</h3>
-            
-            <div class="space-y-2 text-sm text-gray-400 mt-4">
-              <p class="flex justify-between border-b border-white/5 pb-1"><span>Distance:</span> <span class="text-white font-medium">${distanceString}</span></p>
-              <p class="flex justify-between border-b border-white/5 pb-1"><span>Duration:</span> <span class="text-white font-medium">${actualDuration}</span></p>
-              <p class="flex justify-between border-b border-white/5 pb-1"><span>Est. Fuel/Ticket:</span> <span class="text-white font-medium">₹${fuelCost}</span></p>
-              <p class="flex justify-between border-b border-white/5 pb-1"><span>Transit Tolls:</span> <span class="text-white font-medium">₹${toll}</span></p>
-            </div>
-
-            <div class="mt-6 pt-4 border-t border-white/10">
-              <span class="text-xs font-bold uppercase tracking-wider text-gray-400 block mb-2">Calculated Itinerary (${totalDays} Days):</span>
-              <div class="max-h-[300px] overflow-y-auto pr-1">${itineraryHtml}</div>
-            </div>
-          </div>
-          <div class="mt-6 pt-4 border-t border-white/10 flex justify-between items-center">
-            <span class="text-xs text-gray-400">Total Projective Cost</span>
-            <span class="text-xl font-black text-cyan-400">₹${fuelCost + toll}</span>
-          </div>
-        </div>
-
-        <div class="glass p-6 flex flex-col justify-between border-t-4 border-emerald-500">
-          <div>
-            <div class="flex justify-between items-start mb-4">
-              <span class="px-2.5 py-1 text-[10px] font-extrabold uppercase bg-emerald-500/10 text-emerald-400 rounded-md tracking-wider">Panoramic Vistas</span>
-              <i class="fa-solid fa-mountain-sun text-emerald-400"></i>
-            </div>
-            <h3 class="text-xl font-bold text-white mb-2">Highland Byway Path</h3>
-            <p class="text-xs text-gray-400 leading-relaxed mb-4">Increased overall runtime vector, routing travelers directly through pristine panoramic lookouts and local heritage points.</p>
-            
-            <div class="space-y-2 text-sm text-gray-400">
-              <p class="flex justify-between border-b border-white/5 pb-1"><span>Est. Fuel/Ticket:</span> <span class="text-white font-medium">₹${fuelCost + Math.floor(fuelCost * 0.25)}</span></p>
-              <p class="flex justify-between border-b border-white/5 pb-1"><span>Transit Tolls:</span> <span class="text-white font-medium">₹${Math.max(0, toll - 200)}</span></p>
-            </div>
-          </div>
-          <div class="mt-6 pt-4 border-t border-white/10 flex justify-between items-center">
-            <span class="text-xs text-gray-400">Total Projective Cost</span>
-            <span class="text-xl font-black text-emerald-400">₹${fuelCost + Math.floor(fuelCost * 0.25) + Math.max(0, toll - 200)}</span>
-          </div>
-        </div>
-
-        <div class="glass p-6 flex flex-col justify-between border-t-4 border-amber-500">
-          <div>
-            <div class="flex justify-between items-start mb-4">
-              <span class="px-2.5 py-1 text-[10px] font-extrabold uppercase bg-amber-500/10 text-amber-400 rounded-md tracking-wider">Thrifty Baseline</span>
-              <i class="fa-solid fa-wallet text-amber-400"></i>
-            </div>
-            <h3 class="text-xl font-bold text-white mb-2">Economic Bypass System</h3>
-            <p class="text-xs text-gray-400 leading-relaxed mb-4">Leverages older public freeways and slower link-roads to bypass multi-state high-rate industrial toll systems completely.</p>
-            
-            <div class="space-y-2 text-sm text-gray-400">
-              <p class="flex justify-between border-b border-white/5 pb-1"><span>Est. Fuel/Ticket:</span> <span class="text-white font-medium">₹${Math.floor(fuelCost * 0.85)}</span></p>
-              <p class="flex justify-between border-b border-white/5 pb-1"><span>Transit Tolls:</span> <span class="text-white font-medium">₹0</span></p>
-            </div>
-          </div>
-          <div class="mt-6 pt-4 border-t border-white/10 flex justify-between items-center">
-            <span class="text-xs text-gray-400">Total Projective Cost</span>
-            <span class="text-xl font-black text-amber-400">₹${Math.floor(fuelCost * 0.85)}</span>
-          </div>
-        </div>
-      `;
-    } else {
-      alert("Google Route Matrix Exception: Could not determine valid navigation paths between these coordinates. Please check your spelling.");
+    } catch (e) {
+      console.error("FATAL ERROR in Callback:", e);
+      document.getElementById("results").innerHTML = `<div class="p-6 text-red-500">Fatal Error rendering route. Check the browser console.</div>`;
     }
   });
 }
@@ -682,6 +852,35 @@ function generateTrip() {
         <i class="fa-solid fa-shield-cat"></i> Initialize Account
       </button>
     </form>
+  </div>
+</div>
+<div id="paymentModal" class="hidden fixed inset-0 z-[999999] flex items-center justify-center bg-black/75 backdrop-blur-md px-4 transition-all duration-300">
+  <div class="glass p-8 max-w-sm w-full relative overflow-hidden text-center group border border-white/10">
+    
+    <button onclick="togglePaymentModal()" class="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors">
+      <i class="fa-solid fa-xmark text-lg"></i>
+    </button>
+    
+    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-cyan-500/10 text-cyan-400 mb-3 uppercase tracking-wider border border-cyan-500/20">
+      <i class="fa-solid fa-shield-halved text-[9px]"></i> UPI Secure Gateway
+    </span>
+    
+    <h3 id="paymentModalTitle" class="text-xl font-extrabold text-white">Upgrade Tier</h3>
+    <p id="paymentModalPrice" class="text-cyan-400 font-black text-2xl mt-1">₹0.00</p>
+    <p class="text-gray-400 text-xs mt-1 mb-6">Scan the QR code below to initialize Payment</p>
+ 
+    <div class="bg-white p-4 rounded-2xl mx-auto w-48 h-48 flex items-center justify-center shadow-2xl shadow-cyan-500/10 border border-cyan-400/30 relative">
+      <img id="qrCodeImage" src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=upi://pay?pa=7385881985@ybl" alt="Payment QR Code" class="w-full h-full object-contain rounded-lg" />
+    </div>
+
+    <div class="mt-6 space-y-2 text-left bg-white/5 p-3 rounded-xl border border-white/5">
+      <p class="text-[11px] text-gray-400 flex items-center gap-2"><i class="fa-solid fa-circle-notch text-cyan-400 text-[8px] animate-spin"></i> Open BHIM, GPay, PhonePe, or Paytm.</p>
+      <p class="text-[11px] text-gray-400 flex items-center gap-2"><i class="fa-solid fa-circle text-gray-600 text-[6px]"></i> Accept the Payment Request.</p>
+    </div>
+
+    <!-- <button onclick="verifyPaymentMock()" class="w-full mt-5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-cyan-500/10 active:scale-[0.99] transition-all text-xs tracking-wider uppercase">
+      I Have Made the Payment
+    </button> -->
   </div>
 </div>
 </body>
